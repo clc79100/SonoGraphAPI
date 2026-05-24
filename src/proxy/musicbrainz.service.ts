@@ -1,0 +1,152 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  SearchArtist,
+  SimpleTrack,
+  UnifiedAlbum,
+  UnifiedArtist,
+  UnifiedTrack,
+} from './types';
+
+const BASE = 'https://musicbrainz.org/ws/2';
+const USER_AGENT = 'Sonograph/1.0 ( https://github.com/sonograph )';
+const MIN_INTERVAL_MS = 1100; // rate limit ~1 req/s
+
+@Injectable()
+export class MusicbrainzService {
+  private readonly logger = new Logger('MusicBrainz');
+  private chain: Promise<unknown> = Promise.resolve();
+  private lastAt = 0;
+
+  // Serializa las requests respetando ~1 req/s.
+  private schedule<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(async () => {
+      const wait = MIN_INTERVAL_MS - (Date.now() - this.lastAt);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      this.lastAt = Date.now();
+      return fn();
+    });
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private get<T>(path: string): Promise<T | null> {
+    return this.schedule(async () => {
+      const res = await fetch(`${BASE}${path}`, {
+        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+      });
+      if (!res.ok) {
+        this.logger.warn(`${res.status} ${path}`);
+        return null;
+      }
+      return (await res.json()) as T;
+    });
+  }
+
+  coverArtUrl(releaseGroupId: string, size: 250 | 500 = 250): string {
+    return `https://coverartarchive.org/release-group/${releaseGroupId}/front-${size}`;
+  }
+
+  async searchArtists(query: string, limit = 10): Promise<SearchArtist[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const data = await this.get<any>(
+      `/artist?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
+    );
+    return (data?.artists ?? []).map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      country: a.country,
+      disambiguation: a.disambiguation,
+      source: 'musicbrainz' as const,
+    }));
+  }
+
+  async getArtist(id: string): Promise<UnifiedArtist | null> {
+    const a = await this.get<any>(`/artist/${id}?inc=genres+tags&fmt=json`);
+    if (!a?.id) return null;
+    const genres = new Set<string>();
+    (a.genres ?? []).forEach((g: any) => g?.name && genres.add(String(g.name).toLowerCase()));
+    (a.tags ?? []).forEach((t: any) => t?.name && genres.add(String(t.name).toLowerCase()));
+    return {
+      id: a.id,
+      name: a.name,
+      genres: [...genres],
+      country: a.country,
+      disambiguation: a.disambiguation,
+      type: a.type,
+      area: a.area?.name,
+      beginDate: a['life-span']?.begin,
+      endDate: a['life-span']?.end,
+      externalUrl: `https://musicbrainz.org/artist/${a.id}`,
+    };
+  }
+
+  async getAlbums(id: string, limit = 16): Promise<UnifiedAlbum[]> {
+    const data = await this.get<any>(
+      `/release-group?artist=${id}&type=album&fmt=json&limit=${limit}`,
+    );
+    const list: UnifiedAlbum[] = (data?.['release-groups'] ?? []).map((rg: any) => ({
+      id: rg.id,
+      title: rg.title,
+      imageUrl: this.coverArtUrl(rg.id),
+      year: rg['first-release-date']?.slice(0, 4) || undefined,
+      externalUrl: `https://musicbrainz.org/release-group/${rg.id}`,
+    }));
+    return list.sort((a, b) => (a.year ?? '').localeCompare(b.year ?? ''));
+  }
+
+  async getTracks(id: string, limit = 12): Promise<UnifiedTrack[]> {
+    const data = await this.get<any>(`/recording?artist=${id}&fmt=json&limit=${limit}`);
+    return (data?.recordings ?? []).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      duration: r.length ?? undefined,
+      externalUrl: `https://musicbrainz.org/recording/${r.id}`,
+    }));
+  }
+
+  async artistsByTag(tag: string, limit = 10): Promise<SearchArtist[]> {
+    const q = `tag:"${tag.toLowerCase()}"`;
+    const data = await this.get<any>(
+      `/artist?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
+    );
+    return (data?.artists ?? []).map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      country: a.country,
+      disambiguation: a.disambiguation,
+      source: 'musicbrainz' as const,
+    }));
+  }
+
+  async tracksByTag(tag: string, limit = 12): Promise<SimpleTrack[]> {
+    const q = `tag:"${tag.toLowerCase()}"`;
+    const data = await this.get<any>(
+      `/recording?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
+    );
+    return (data?.recordings ?? []).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      artistName: r['artist-credit']?.[0]?.name,
+      duration: r.length ?? undefined,
+    }));
+  }
+
+  // Imagen de artista por nombre vía Wikipedia REST (fallback de MB).
+  async wikipediaImage(name: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,
+        { headers: { Accept: 'application/json' } },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as any;
+      return data.thumbnail?.source ?? data.originalimage?.source ?? null;
+    } catch {
+      return null;
+    }
+  }
+}

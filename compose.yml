@@ -1,0 +1,35 @@
+# Postgres vive en Supabase (cloud): DATABASE_URL y DIRECT_URL apuntan allí,
+# no a un servicio de esta red. Aquí solo se contiene la API y Redis.
+services:
+  api:
+    build:
+      context: .
+    image: sono-graph-api:latest
+    container_name: SonoGraphAPI
+    ports:
+      - 3000:3000
+    depends_on:
+      - redis
+    environment:
+      PORT: ${PORT}
+      NODE_ENV: ${NODE_ENV}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+
+  redis:
+    image: redis:7-alpine
+    container_name: SonographRedis
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
