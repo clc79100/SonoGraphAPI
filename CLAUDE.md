@@ -157,7 +157,7 @@ GET    /users/me/genre-visits/top
 ### Consideraciones por fuente externa
 
 - **MusicBrainz**: rate limit ~1 req/s → serializar con una cola (`@nestjs/bull`) o throttle por IP. Header `User-Agent: Sonograph/1.0`
-- **Spotify**: token Client Credentials se renueva cada ~55min → cacheado en Redis bajo `spotify:token`
+- **Spotify**: cuenta Premium — Client Credentials (`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`). Token se renueva automáticamente (`expires_in - 60s`) → cacheado en Redis bajo `spotify:token`
 - **Last.fm**: filtrar imagen placeholder `2a96cbd8b46e442fc41c2b86b821562f` → devolver `null`
 - **AudioDB**: key pública `123`, fuente primaria de imágenes para MB y LFM
 

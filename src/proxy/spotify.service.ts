@@ -57,13 +57,6 @@ export class SpotifyService {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
-      const body = await res.text();
-      if (body.toLowerCase().includes('premium')) {
-        throw new ProxyError(
-          'premium_required',
-          'La cuenta del desarrollador requiere Spotify Premium para usar la API.',
-        );
-      }
       throw new ProxyError('request_failed', `Spotify ${res.status} ${path}`);
     }
     return (await res.json()) as T;
@@ -94,7 +87,7 @@ export class SpotifyService {
 
   async getAlbums(id: string, limit = 18): Promise<UnifiedAlbum[]> {
     const data = await this.fetch<any>(
-      `/artists/${id}/albums?include_groups=album&limit=${limit}&market=US`,
+      `/artists/${id}/albums?album_type=album&limit=${limit}&market=US`,
     );
     return (data?.items ?? []).map((a: any) => ({
       id: a.id,
@@ -124,7 +117,7 @@ export class SpotifyService {
 
   async artistsByGenre(genre: string, limit = 10): Promise<SearchArtist[]> {
     const data = await this.fetch<any>(
-      `/search?q=genre:"${encodeURIComponent(genre)}"&type=artist&limit=${limit}`,
+      `/search?q=${encodeURIComponent(genre)}&type=artist&limit=${limit}`,
     );
     return (data?.artists?.items ?? []).map((a: any) => ({
       id: a.id,
@@ -135,9 +128,9 @@ export class SpotifyService {
 
   async tracksByGenre(genre: string, limit = 12): Promise<SimpleTrack[]> {
     const data = await this.fetch<any>(
-      `/search?q=genre:"${encodeURIComponent(genre)}"&type=track&limit=${limit}`,
+      `/recommendations?seed_genres=${encodeURIComponent(genre)}&limit=${limit}&market=US`,
     );
-    return (data?.tracks?.items ?? []).map((t: any) => ({
+    return (data?.tracks ?? []).map((t: any) => ({
       id: t.id,
       title: t.name,
       artistName: t.artists?.[0]?.name,
