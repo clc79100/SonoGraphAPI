@@ -26,4 +26,9 @@ export const envs = {
   SPOTIFY_CLIENT_ID: env.get('SPOTIFY_CLIENT_ID').default('').asString(),
   SPOTIFY_CLIENT_SECRET: env.get('SPOTIFY_CLIENT_SECRET').default('').asString(),
   LASTFM_API_KEY: env.get('LASTFM_API_KEY').default('').asString(),
+
+  APPLICATIONINSIGHTS_CONNECTION_STRING: env
+    .get('APPLICATIONINSIGHTS_CONNECTION_STRING')
+    .default('')
+    .asString(),
 };

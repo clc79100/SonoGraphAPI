@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, LoggerService, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { QueryFailedError, Repository } from 'typeorm';
 import { FavoriteAlbum } from '../entities/favorite-album.entity';
 import { FavoriteArtist } from '../entities/favorite-artist.entity';
@@ -28,6 +29,7 @@ export class FavoritesService {
     private readonly tracksRepo: Repository<FavoriteTrack>,
     @InjectRepository(FavoriteAlbum)
     private readonly albumsRepo: Repository<FavoriteAlbum>,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
   ) {}
 
   // ---- Genres ----
@@ -40,7 +42,9 @@ export class FavoritesService {
     if (existing) return existing;
     const fav = this.genresRepo.create({ userId, genreId });
     try {
-      return await this.genresRepo.save(fav);
+      const saved = await this.genresRepo.save(fav);
+      this.logger.log(`Favorite genre added: ${genreId} by ${userId}`, 'FavoritesService');
+      return saved;
     } catch (err) {
       if (isForeignKeyViolation(err)) {
         throw new NotFoundException(`Genre '${genreId}' not found`);
@@ -51,6 +55,7 @@ export class FavoritesService {
 
   async removeGenre(userId: string, genreId: string): Promise<void> {
     await this.genresRepo.delete({ userId, genreId });
+    this.logger.log(`Favorite genre removed: ${genreId} by ${userId}`, 'FavoritesService');
   }
 
   // ---- Artists ----
@@ -70,11 +75,14 @@ export class FavoritesService {
       imageUrl: dto.imageUrl ?? null,
       source: dto.source,
     });
-    return this.artistsRepo.save(fav);
+    const saved = await this.artistsRepo.save(fav);
+    this.logger.log(`Favorite artist added: ${dto.externalId} by ${userId}`, 'FavoritesService');
+    return saved;
   }
 
   async removeArtist(userId: string, id: string): Promise<void> {
     await this.artistsRepo.delete({ id, userId });
+    this.logger.log(`Favorite artist removed: ${id} by ${userId}`, 'FavoritesService');
   }
 
   // ---- Tracks ----
@@ -94,11 +102,14 @@ export class FavoritesService {
       artistName: dto.artistName ?? null,
       source: dto.source,
     });
-    return this.tracksRepo.save(fav);
+    const saved = await this.tracksRepo.save(fav);
+    this.logger.log(`Favorite track added: ${dto.externalId} by ${userId}`, 'FavoritesService');
+    return saved;
   }
 
   async removeTrack(userId: string, id: string): Promise<void> {
     await this.tracksRepo.delete({ id, userId });
+    this.logger.log(`Favorite track removed: ${id} by ${userId}`, 'FavoritesService');
   }
 
   // ---- Albums ----
@@ -119,10 +130,13 @@ export class FavoritesService {
       imageUrl: dto.imageUrl ?? null,
       source: dto.source,
     });
-    return this.albumsRepo.save(fav);
+    const saved = await this.albumsRepo.save(fav);
+    this.logger.log(`Favorite album added: ${dto.externalId} by ${userId}`, 'FavoritesService');
+    return saved;
   }
 
   async removeAlbum(userId: string, id: string): Promise<void> {
     await this.albumsRepo.delete({ id, userId });
+    this.logger.log(`Favorite album removed: ${id} by ${userId}`, 'FavoritesService');
   }
 }

@@ -1,13 +1,15 @@
-import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, LoggerService, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
-  private readonly logger = new Logger(RedisService.name);
-
-  constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly client: Redis,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
+  ) {}
 
   get raw(): Redis {
     return this.client;
@@ -33,7 +35,7 @@ export class RedisService implements OnModuleDestroy {
     try {
       await this.client.quit();
     } catch (err) {
-      this.logger.warn(`Error closing Redis: ${(err as Error).message}`);
+      this.logger.warn(`Error closing Redis: ${(err as Error).message}`, 'RedisService');
     }
   }
 }

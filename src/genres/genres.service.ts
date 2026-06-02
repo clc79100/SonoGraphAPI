@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, LoggerService, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Repository } from 'typeorm';
 import { Family } from '../entities/family.entity';
 import { Genre } from '../entities/genre.entity';
@@ -23,6 +24,7 @@ export class GenresService {
     private readonly parentsRepo: Repository<GenreParent>,
     @InjectRepository(GenreSourceTag)
     private readonly sourceTagsRepo: Repository<GenreSourceTag>,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
   ) {}
 
   async findAllFamilies(): Promise<FamilyResponse[]> {
@@ -37,6 +39,8 @@ export class GenresService {
       this.relationsRepo.find(),
       this.sourceTagsRepo.find(),
     ]);
+
+    this.logger.log('Genre graph loaded', 'GenresService');
 
     const parentsByGenre = groupBy(parents, (p) => p.genreId, (p) => p.parentId);
     const relatedByGenre = groupBy(relations, (r) => r.genreId, (r) => r.relatedId);

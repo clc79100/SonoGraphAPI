@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import {
   SearchArtist,
   SimpleTrack,
@@ -13,11 +14,13 @@ const MIN_INTERVAL_MS = 1100; // rate limit ~1 req/s
 
 @Injectable()
 export class MusicbrainzService {
-  private readonly logger = new Logger('MusicBrainz');
   private chain: Promise<unknown> = Promise.resolve();
   private lastAt = 0;
 
-  // Serializa las requests respetando ~1 req/s.
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
+  ) {}
+
   private schedule<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.chain.then(async () => {
       const wait = MIN_INTERVAL_MS - (Date.now() - this.lastAt);
@@ -38,7 +41,24 @@ export class MusicbrainzService {
         headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
       });
       if (!res.ok) {
-        this.logger.warn(`${res.status} ${path}`);
+        if (res.status === 503) {
+          const retryAfter = res.headers.get('Retry-After');
+          this.logger.warn(
+            `MusicBrainz rate limited`,
+            JSON.stringify({
+              context: 'MusicbrainzService',
+              meta: { retryAfterMs: retryAfter ? Number(retryAfter) * 1000 : null },
+            }),
+          );
+        } else {
+          this.logger.warn(
+            `MusicBrainz non-OK response`,
+            JSON.stringify({
+              context: 'MusicbrainzService',
+              meta: { status: res.status, path },
+            }),
+          );
+        }
         return null;
       }
       return (await res.json()) as T;
@@ -135,7 +155,6 @@ export class MusicbrainzService {
     }));
   }
 
-  // Imagen de artista por nombre vía Wikipedia REST (fallback de MB).
   async wikipediaImage(name: string): Promise<string | null> {
     try {
       const res = await fetch(

@@ -1,6 +1,8 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { dataSourceOptions } from './core/db/data-source';
+import { LoggerModule } from './core/logger/logger.module';
+import { HttpLoggerMiddleware } from './core/logger/http-logger.middleware';
 import { RedisModule } from './redis/redis.module';
 import { CacheModule } from './cache/cache.module';
 import { GenresModule } from './genres/genres.module';
@@ -11,6 +13,7 @@ import { ArtistsModule } from './artists/artists.module';
 
 @Module({
   imports: [
+    LoggerModule,
     TypeOrmModule.forRoot(dataSourceOptions),
     RedisModule,
     CacheModule,
@@ -21,4 +24,8 @@ import { ArtistsModule } from './artists/artists.module';
     ArtistsModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(HttpLoggerMiddleware).forRoutes('*');
+  }
+}

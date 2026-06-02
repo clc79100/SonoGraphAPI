@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, LoggerService, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { QueryFailedError, Repository } from 'typeorm';
 import { GenreVisit } from '../entities/genre-visit.entity';
 
@@ -20,12 +21,15 @@ export class VisitsService {
   constructor(
     @InjectRepository(GenreVisit)
     private readonly visitsRepo: Repository<GenreVisit>,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
   ) {}
 
   async record(userId: string, genreId: string): Promise<GenreVisit> {
     const visit = this.visitsRepo.create({ userId, genreId });
     try {
-      return await this.visitsRepo.save(visit);
+      const saved = await this.visitsRepo.save(visit);
+      this.logger.log(`Genre visited: ${genreId} by ${userId}`, 'VisitsService');
+      return saved;
     } catch (err) {
       if (
         err instanceof QueryFailedError &&

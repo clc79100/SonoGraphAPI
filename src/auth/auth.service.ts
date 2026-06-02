@@ -1,11 +1,14 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
+  LoggerService,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { envs } from '../config/envs';
@@ -39,6 +42,7 @@ export class AuthService {
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
     private readonly jwt: JwtService,
     private readonly redis: RedisService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
   ) {}
 
   async register(email: string, password: string): Promise<AuthResponse> {
@@ -49,6 +53,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const user = this.usersRepo.create({ email, passwordHash });
     await this.usersRepo.save(user);
+    this.logger.log(`Register: ${user.id}`, 'AuthService');
     const tokens = await this.issueTokens(user.id);
     return { user: { id: user.id, email: user.email }, ...tokens };
   }
@@ -56,12 +61,15 @@ export class AuthService {
   async login(email: string, password: string): Promise<AuthResponse> {
     const user = await this.usersRepo.findOne({ where: { email } });
     if (!user) {
+      this.logger.warn('Login failed: user not found', 'AuthService');
       throw new UnauthorizedException('Invalid credentials');
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
+      this.logger.warn(`Login failed: wrong password for ${user.id}`, 'AuthService');
       throw new UnauthorizedException('Invalid credentials');
     }
+    this.logger.log(`Login: ${user.id}`, 'AuthService');
     const tokens = await this.issueTokens(user.id);
     return { user: { id: user.id, email: user.email }, ...tokens };
   }
@@ -78,12 +86,12 @@ export class AuthService {
 
     const stored = await this.redis.get(`refresh_token:${payload.sub}`);
     if (!stored || stored !== refreshToken) {
-      // Reuse detection: si llega un refresh válido pero no es el guardado,
-      // invalidamos toda la sesión del usuario.
       await this.redis.del(`refresh_token:${payload.sub}`);
+      this.logger.warn(`Refresh token reuse detected: ${payload.sub}`, 'AuthService');
       throw new UnauthorizedException('Refresh token reuse detected');
     }
 
+    this.logger.log(`Token refreshed: ${payload.sub}`, 'AuthService');
     return this.issueTokens(payload.sub);
   }
 
@@ -94,6 +102,7 @@ export class AuthService {
       await this.redis.setEx(`blacklist:${accessJti}`, remaining, '1');
     }
     await this.redis.del(`refresh_token:${userId}`);
+    this.logger.log(`Logout: ${userId}`, 'AuthService');
   }
 
   private async issueTokens(userId: string): Promise<TokenPair> {

@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, LoggerService } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { envs } from '../config/envs';
 import { RedisService } from '../redis/redis.service';
 import {
@@ -16,9 +17,10 @@ const TOKEN_KEY = 'spotify:token';
 
 @Injectable()
 export class SpotifyService {
-  private readonly logger = new Logger('Spotify');
-
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    private readonly redis: RedisService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
+  ) {}
 
   private async getAccessToken(): Promise<string> {
     if (!envs.SPOTIFY_CLIENT_ID || !envs.SPOTIFY_CLIENT_SECRET) {
@@ -42,10 +44,10 @@ export class SpotifyService {
       body: 'grant_type=client_credentials',
     });
     if (!res.ok) {
+      this.logger.error(`Spotify auth failed: ${res.status}`, undefined, 'SpotifyService');
       throw new ProxyError('request_failed', `Spotify auth ${res.status}`);
     }
     const data = (await res.json()) as any;
-    // El token expira a los 60s*expires_in; cachear 5s menos por seguridad.
     const ttl = Math.max(30, (data.expires_in ?? 3600) - 60);
     await this.redis.setEx(TOKEN_KEY, ttl, data.access_token);
     return data.access_token;
@@ -57,6 +59,11 @@ export class SpotifyService {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
+      this.logger.error(
+        `Spotify request failed: ${res.status} ${path}`,
+        undefined,
+        'SpotifyService',
+      );
       throw new ProxyError('request_failed', `Spotify ${res.status} ${path}`);
     }
     return (await res.json()) as T;

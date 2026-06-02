@@ -180,3 +180,182 @@ Spotify usa su propia imagen directamente, sin pasar por AudioDB
 - El contexto del frontend y los tipos `Unified*` están en el `CLAUDE.md` original del proyecto
 - No modificar los tipos `UnifiedArtist`, `UnifiedAlbum`, `UnifiedTrack`, `SearchArtist` — el frontend depende de ellos
 - La migración del frontend es quirúrgica: solo cambian los archivos en `src/lib/`, no los componentes
+
+---
+
+## Observabilidad — Winston + Azure Application Insights
+
+```
+NestJS (AWS Elastic Beanstalk)
+        │
+        ├── Winston Logger (JSON estructurado)
+        │       │
+        │       ├── ConsoleTransport (desarrollo local)
+        │       └── AzureApplicationInsightsTransport (producción)
+        │
+        └── Application Insights SDK (auto-instrumentación)
+                │
+                ▼
+        Azure Application Insights
+                │
+                ├── Log Analytics Workspace (Kusto queries)
+                ├── Live Metrics (tiempo real)
+                ├── Application Map (dependencias)
+                └── Failures (errores con stack trace)
+```
+
+### Paquetes
+
+```
+winston
+nest-winston
+winston-azure-application-insights
+applicationinsights
+```
+
+### Estructura de módulos
+
+```
+src/core/logger/
+├── logger.module.ts        # @Global(), configura Winston, exporta WinstonModule
+├── http-logger.middleware.ts  # Log de cada request/response
+└── all-exceptions.filter.ts   # Global exception filter (catch-all)
+```
+
+### Transports por entorno
+
+| `NODE_ENV` | Transports |
+| --- | --- |
+| `development` | Console colorizado (human-readable) |
+| `production` | Console JSON + ApplicationInsightsTransport |
+| `test` | Silent |
+
+### Formato de cada log (JSON)
+
+```json
+{
+  "timestamp": "2026-06-01T14:32:11.452Z",
+  "level": "info",
+  "message": "GET /api/artists/123456 → 200 (341ms)",
+  "context": "ArtistsController",
+  "meta": {
+    "method": "GET",
+    "path": "/api/artists/123456",
+    "statusCode": 200,
+    "durationMs": 341,
+    "userId": "uuid-del-usuario",
+    "source": "spotify",
+    "cacheHit": false
+  }
+}
+```
+
+### Eventos instrumentados
+
+| Servicio | Evento | Level | Campos extra |
+| --- | --- | --- | --- |
+| HTTP middleware | Cada request | `info` | `method`, `path`, `statusCode`, `durationMs`, `userId` |
+| `AuthService` | Login exitoso | `info` | `userId` |
+| `AuthService` | Login fallido | `warn` | `reason` |
+| `AuthService` | Register | `info` | `userId` |
+| `AuthService` | Refresh token | `info` | `userId` |
+| `AuthService` | Reuse de refresh | `warn` | `userId` |
+| `AuthService` | Logout | `info` | `userId` |
+| `JwtStrategy` | Token revocado | `warn` | `jti` |
+| `CacheService` | Cache hit | `info` | `key` |
+| `CacheService` | Cache miss | `info` | `key` |
+| `ProxyExceptionFilter` | Error proxy | `error` | `code`, `status` |
+| `MusicbrainzService` | Respuesta no-OK | `warn` | `status`, `path` |
+| `MusicbrainzService` | Rate limit (503) | `warn` | `retryAfterMs` |
+| `SpotifyService` | Request fallido | `error` | `status`, `path` |
+| `VisitsService` | Genre visitado | `info` | `userId`, `genreId` |
+| `FavoritesService` | Favorito añadido | `info` | `userId`, tipo, id |
+| `FavoritesService` | Favorito eliminado | `info` | `userId`, tipo, id |
+| `GenresService` | Grafo cargado | `info` | — |
+| `AllExceptionsFilter` | Error no manejado | `error` | `stack`, `statusCode`, `path` |
+
+### Variables de entorno adicionales
+
+```
+APPLICATIONINSIGHTS_CONNECTION_STRING   # Azure Portal → App Insights → Connection String
+```
+
+Agregar en Elastic Beanstalk: Configuration → Software → Environment properties.
+
+### Inicialización en main.ts (orden crítico)
+
+App Insights **debe** inicializarse antes de `NestFactory.create` — el SDK parchea `http`, `https`, `pg` e `ioredis` a nivel de módulo:
+
+```typescript
+// 1. App Insights PRIMERO
+if (NODE_ENV === 'production' && APPLICATIONINSIGHTS_CONNECTION_STRING) {
+  appInsights.setup(connectionString)
+    .setAutoCollectRequests(true)
+    .setAutoCollectDependencies(true)
+    .setAutoCollectExceptions(false)   // AllExceptionsFilter es la fuente de verdad
+    .setAutoCollectConsole(false)      // Winston transport maneja esto
+    .start();
+}
+
+// 2. NestJS con bufferLogs: true
+const app = await NestFactory.create(AppModule, { bufferLogs: true });
+app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+app.useGlobalFilters(app.get(AllExceptionsFilter));
+```
+
+`setAutoCollectExceptions(false)` es **intencional** — evita doble conteo de errores ya enviados por `AllExceptionsFilter` vía el Winston transport.
+
+### Sampling para /genres
+
+`GET /genres` se llama mucho y siempre es exitoso. Se aplica 20% de sampling vía `TelemetryProcessor` en App Insights para no consumir el free tier:
+
+```typescript
+appInsights.defaultClient.addTelemetryProcessor((envelope) => {
+  const name = (envelope.data as any)?.baseData?.name ?? '';
+  if (name.includes('/genres') && Math.random() > 0.2) return false;
+  return true;
+});
+```
+
+### Free tier de Azure Application Insights
+
+- **5 GB / mes** de datos ingestados — gratuitos
+- Retención: 90 días
+- Si se supera: ~$2.30 por GB adicional
+- Optimización: no loguear bodies de response, no loguear queries SQL exitosas, sampling en `/genres`
+
+### KQL queries útiles
+
+```kql
+// Auth failures
+traces
+| where customDimensions.context == "AuthService"
+| where severityLevel >= 2
+| order by timestamp desc
+
+// Errores de APIs externas
+dependencies
+| where success == false
+| summarize count() by target, resultCode
+| order by count_ desc
+
+// Cache hit rate
+traces
+| where customDimensions.cacheHit != ""
+| summarize
+    hits=countif(customDimensions.cacheHit == "true"),
+    misses=countif(customDimensions.cacheHit == "false")
+    by bin(timestamp, 1h)
+| extend hitRate = hits * 100.0 / (hits + misses)
+| render timechart
+
+// Errores no manejados
+traces
+| where severityLevel >= 3
+| order by timestamp desc
+| project timestamp, message, customDimensions
+```
+
+### Inyección del logger
+
+Siempre usar `@Inject(WINSTON_MODULE_NEST_PROVIDER)` con tipo `LoggerService` de `@nestjs/common`. `LoggerModule` es `@Global()` — los demás módulos no necesitan importarlo explícitamente.
