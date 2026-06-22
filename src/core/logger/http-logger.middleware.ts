@@ -4,9 +4,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 @Injectable()
 export class HttpLoggerMiddleware implements NestMiddleware {
-  constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
-  ) {}
+  constructor(@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService) {}
 
   use(req: Request, res: Response, next: NextFunction): void {
     const { method, path } = req;
@@ -15,7 +13,7 @@ export class HttpLoggerMiddleware implements NestMiddleware {
     res.on('finish', () => {
       const durationMs = Date.now() - startAt;
       const { statusCode } = res;
-      const userId: string | undefined = (req as any).user?.userId;
+      const userId: string | undefined = (req as { user?: { userId?: string } }).user?.userId;
 
       this.logger.log(
         `${method} ${path} → ${statusCode} (${durationMs}ms)`,

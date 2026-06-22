@@ -9,15 +9,7 @@ import { GenresController } from './genres.controller';
 import { GenresService } from './genres.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      Family,
-      Genre,
-      GenreRelation,
-      GenreParent,
-      GenreSourceTag,
-    ]),
-  ],
+  imports: [TypeOrmModule.forFeature([Family, Genre, GenreRelation, GenreParent, GenreSourceTag])],
   controllers: [GenresController],
   providers: [GenresService],
 })

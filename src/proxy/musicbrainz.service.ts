@@ -1,12 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Inject, Injectable, LoggerService } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { SearchArtist, SimpleTrack, UnifiedAlbum, UnifiedArtist, UnifiedTrack } from './types';
 import {
-  SearchArtist,
-  SimpleTrack,
-  UnifiedAlbum,
-  UnifiedArtist,
-  UnifiedTrack,
-} from './types';
+  mapAlbums,
+  mapArtist,
+  mapSearchArtists,
+  mapTracks,
+  mapTracksByTag,
+} from './musicbrainz.mappers';
 
 const BASE = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Sonograph/1.0 ( https://github.com/sonograph )';
@@ -17,9 +19,7 @@ export class MusicbrainzService {
   private chain: Promise<unknown> = Promise.resolve();
   private lastAt = 0;
 
-  constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
-  ) {}
+  constructor(@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService) {}
 
   private schedule<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.chain.then(async () => {
@@ -65,67 +65,30 @@ export class MusicbrainzService {
     });
   }
 
-  coverArtUrl(releaseGroupId: string, size: 250 | 500 = 250): string {
-    return `https://coverartarchive.org/release-group/${releaseGroupId}/front-${size}`;
-  }
-
   async searchArtists(query: string, limit = 10): Promise<SearchArtist[]> {
     const q = query.trim();
     if (!q) return [];
     const data = await this.get<any>(
       `/artist?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
     );
-    return (data?.artists ?? []).map((a: any) => ({
-      id: a.id,
-      name: a.name,
-      country: a.country,
-      disambiguation: a.disambiguation,
-      source: 'musicbrainz' as const,
-    }));
+    return mapSearchArtists(data?.artists ?? []);
   }
 
   async getArtist(id: string): Promise<UnifiedArtist | null> {
     const a = await this.get<any>(`/artist/${id}?inc=genres+tags&fmt=json`);
-    if (!a?.id) return null;
-    const genres = new Set<string>();
-    (a.genres ?? []).forEach((g: any) => g?.name && genres.add(String(g.name).toLowerCase()));
-    (a.tags ?? []).forEach((t: any) => t?.name && genres.add(String(t.name).toLowerCase()));
-    return {
-      id: a.id,
-      name: a.name,
-      genres: [...genres],
-      country: a.country,
-      disambiguation: a.disambiguation,
-      type: a.type,
-      area: a.area?.name,
-      beginDate: a['life-span']?.begin,
-      endDate: a['life-span']?.end,
-      externalUrl: `https://musicbrainz.org/artist/${a.id}`,
-    };
+    return mapArtist(a);
   }
 
   async getAlbums(id: string, limit = 16): Promise<UnifiedAlbum[]> {
     const data = await this.get<any>(
       `/release-group?artist=${id}&type=album&fmt=json&limit=${limit}`,
     );
-    const list: UnifiedAlbum[] = (data?.['release-groups'] ?? []).map((rg: any) => ({
-      id: rg.id,
-      title: rg.title,
-      imageUrl: this.coverArtUrl(rg.id),
-      year: rg['first-release-date']?.slice(0, 4) || undefined,
-      externalUrl: `https://musicbrainz.org/release-group/${rg.id}`,
-    }));
-    return list.sort((a, b) => (a.year ?? '').localeCompare(b.year ?? ''));
+    return mapAlbums(data?.['release-groups'] ?? []);
   }
 
   async getTracks(id: string, limit = 12): Promise<UnifiedTrack[]> {
     const data = await this.get<any>(`/recording?artist=${id}&fmt=json&limit=${limit}`);
-    return (data?.recordings ?? []).map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      duration: r.length ?? undefined,
-      externalUrl: `https://musicbrainz.org/recording/${r.id}`,
-    }));
+    return mapTracks(data?.recordings ?? []);
   }
 
   async artistsByTag(tag: string, limit = 10): Promise<SearchArtist[]> {
@@ -133,13 +96,7 @@ export class MusicbrainzService {
     const data = await this.get<any>(
       `/artist?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
     );
-    return (data?.artists ?? []).map((a: any) => ({
-      id: a.id,
-      name: a.name,
-      country: a.country,
-      disambiguation: a.disambiguation,
-      source: 'musicbrainz' as const,
-    }));
+    return mapSearchArtists(data?.artists ?? []);
   }
 
   async tracksByTag(tag: string, limit = 12): Promise<SimpleTrack[]> {
@@ -147,12 +104,7 @@ export class MusicbrainzService {
     const data = await this.get<any>(
       `/recording?query=${encodeURIComponent(q)}&fmt=json&limit=${limit}`,
     );
-    return (data?.recordings ?? []).map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      artistName: r['artist-credit']?.[0]?.name,
-      duration: r.length ?? undefined,
-    }));
+    return mapTracksByTag(data?.recordings ?? []);
   }
 
   async wikipediaImage(name: string): Promise<string | null> {

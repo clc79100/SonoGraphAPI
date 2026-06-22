@@ -3,10 +3,7 @@ import { Family } from '../../entities/family.entity';
 import { Genre } from '../../entities/genre.entity';
 import { GenreParent } from '../../entities/genre-parent.entity';
 import { GenreRelation } from '../../entities/genre-relation.entity';
-import {
-  EXTERNAL_SOURCES,
-  GenreSourceTag,
-} from '../../entities/genre-source-tag.entity';
+import { EXTERNAL_SOURCES, GenreSourceTag } from '../../entities/genre-source-tag.entity';
 import { FAMILIES, GENRES } from './seed-data/genres';
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -34,7 +31,17 @@ async function seed() {
   // 2. Géneros (upsert por PK) — sin parents/related (eso va en tablas join).
   // El dataset curado trae ids repetidos; dedup por id (última entrada gana)
   // para no romper el ON CONFLICT (Postgres rechaza el mismo key 2x por comando).
-  const genreById = new Map<string, { id: string; name: string; familyId: string; era: string | null; region: string | null; description: string | null }>();
+  const genreById = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      familyId: string;
+      era: string | null;
+      region: string | null;
+      description: string | null;
+    }
+  >();
   for (const g of GENRES) {
     genreById.set(g.id, {
       id: g.id,

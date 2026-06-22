@@ -11,9 +11,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
-  ) {}
+  constructor(@Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -33,16 +31,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const stack = exception instanceof Error ? exception.stack : undefined;
-    const message =
-      exception instanceof Error ? exception.message : String(exception);
+    const message = exception instanceof Error ? exception.message : String(exception);
 
     if (statusCode >= 500) {
       this.logger.error(message, stack, 'ExceptionFilter');
     } else {
-      this.logger.warn(
-        `${req.method} ${req.path} → ${statusCode}: ${message}`,
-        'ExceptionFilter',
-      );
+      this.logger.warn(`${req.method} ${req.path} → ${statusCode}: ${message}`, 'ExceptionFilter');
     }
 
     res.status(statusCode).json(responseBody);

@@ -9,10 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import {
-  AuthenticatedUser,
-  CurrentUser,
-} from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser, CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   AddFavoriteAlbumDto,

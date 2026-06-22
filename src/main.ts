@@ -1,15 +1,13 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './core/logger/all-exceptions.filter';
 import { envs } from './config/envs';
 
 async function bootstrap() {
-  if (
-    envs.NODE_ENV === 'production' &&
-    envs.APPLICATIONINSIGHTS_CONNECTION_STRING
-  ) {
+  if (envs.NODE_ENV === 'production' && envs.APPLICATIONINSIGHTS_CONNECTION_STRING) {
     // Debe inicializarse antes de NestFactory.create para que el SDK pueda
     // parchear http/https/pg/ioredis antes de que NestJS los cargue.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,6 +44,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  app.use(helmet());
 
   app.enableCors({
     origin: envs.CORS_ORIGIN.split(',').map((s) => s.trim()),

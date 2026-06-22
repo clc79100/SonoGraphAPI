@@ -8,8 +8,6 @@ export class ParseSourcePipe implements PipeTransform<unknown, Source> {
     if (typeof value === 'string' && (EXTERNAL_SOURCES as readonly string[]).includes(value)) {
       return value as Source;
     }
-    throw new BadRequestException(
-      `'source' debe ser uno de: ${EXTERNAL_SOURCES.join(', ')}`,
-    );
+    throw new BadRequestException(`'source' debe ser uno de: ${EXTERNAL_SOURCES.join(', ')}`);
   }
 }

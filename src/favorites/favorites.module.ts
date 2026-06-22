@@ -9,12 +9,7 @@ import { FavoritesService } from './favorites.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      FavoriteGenre,
-      FavoriteArtist,
-      FavoriteTrack,
-      FavoriteAlbum,
-    ]),
+    TypeOrmModule.forFeature([FavoriteGenre, FavoriteArtist, FavoriteTrack, FavoriteAlbum]),
   ],
   controllers: [FavoritesController],
   providers: [FavoritesService],

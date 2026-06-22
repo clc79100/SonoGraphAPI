@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Injectable } from '@nestjs/common';
 
 const BASE = 'https://www.theaudiodb.com/api/v1/json/123';

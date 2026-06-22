@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Injectable } from '@nestjs/common';
 import { envs } from '../config/envs';
 import {
@@ -8,14 +9,17 @@ import {
   UnifiedArtist,
   UnifiedTrack,
 } from './types';
+import {
+  idToParam,
+  mapAlbums,
+  mapArtist,
+  mapArtistsByTag,
+  mapSearchArtists,
+  mapTracks,
+  mapTracksByTag,
+} from './lastfm.mappers';
 
 const API_BASE = 'https://ws.audioscrobbler.com/2.0/';
-const PLACEHOLDER = '2a96cbd8b46e442fc41c2b86b821562f';
-
-interface LFMImage {
-  '#text': string;
-  size: string;
-}
 
 @Injectable()
 export class LastfmService {
@@ -40,50 +44,23 @@ export class LastfmService {
     return data as T;
   }
 
-  // Last.fm identifica por mbid si existe, si no por `name:<artista>`.
-  private idToParam(id: string): Record<string, string> {
-    return id.startsWith('name:') ? { artist: id.slice(5) } : { mbid: id };
-  }
-
-  private pickImage(images?: LFMImage[]): string | null {
-    if (!images?.length) return null;
-    for (const size of ['mega', 'extralarge', 'large', 'medium', 'small']) {
-      const found = images.find((i) => i.size === size && i['#text']);
-      if (found && !found['#text'].includes(PLACEHOLDER)) return found['#text'];
-    }
-    return null;
-  }
-
   async searchArtists(query: string, limit = 10): Promise<SearchArtist[]> {
     const data = await this.call<any>({
       method: 'artist.search',
       artist: query.trim(),
       limit: String(limit),
     });
-    const matches = data?.results?.artistmatches?.artist ?? [];
-    return matches.map((a: any) => ({
-      id: a.mbid || `name:${a.name}`,
-      name: a.name,
-      source: 'lastfm' as const,
-    }));
+    return mapSearchArtists(data?.results?.artistmatches?.artist ?? []);
   }
 
   async getArtist(id: string): Promise<UnifiedArtist | null> {
     try {
       const data = await this.call<any>({
         method: 'artist.getinfo',
-        ...this.idToParam(id),
+        ...idToParam(id),
         autocorrect: '1',
       });
-      const a = data?.artist;
-      if (!a) return null;
-      return {
-        id: a.mbid || `name:${a.name}`,
-        name: a.name,
-        genres: a.tags?.tag?.map((t: any) => t.name) ?? [],
-        image: this.pickImage(a.image),
-        externalUrl: a.url,
-      };
+      return mapArtist(data?.artist);
     } catch (err) {
       if (err instanceof ProxyError && err.code === 'not_found') return null;
       throw err;
@@ -93,32 +70,21 @@ export class LastfmService {
   async getAlbums(id: string, limit = 18): Promise<UnifiedAlbum[]> {
     const data = await this.call<any>({
       method: 'artist.gettopalbums',
-      ...this.idToParam(id),
+      ...idToParam(id),
       autocorrect: '1',
       limit: String(limit),
     });
-    return (data?.topalbums?.album ?? []).map((a: any) => ({
-      id: a.mbid || `name:${a.artist?.name}|${a.name}`,
-      title: a.name,
-      imageUrl: this.pickImage(a.image) ?? undefined,
-      externalUrl: a.url,
-    }));
+    return mapAlbums(data?.topalbums?.album ?? []);
   }
 
   async getTracks(id: string, limit = 12): Promise<UnifiedTrack[]> {
     const data = await this.call<any>({
       method: 'artist.gettoptracks',
-      ...this.idToParam(id),
+      ...idToParam(id),
       autocorrect: '1',
       limit: String(limit),
     });
-    return (data?.toptracks?.track ?? []).map((t: any) => ({
-      id: t.mbid || `name:${t.artist?.name}|${t.name}`,
-      title: t.name,
-      duration: t.duration ? Number(t.duration) * 1000 : undefined,
-      albumImageUrl: this.pickImage(t.image) ?? undefined,
-      externalUrl: t.url,
-    }));
+    return mapTracks(data?.toptracks?.track ?? []);
   }
 
   async image(id: string): Promise<string | null> {
@@ -132,11 +98,7 @@ export class LastfmService {
       tag,
       limit: String(limit),
     });
-    return (data?.topartists?.artist ?? []).map((a: any) => ({
-      id: a.mbid || `name:${a.name}`,
-      name: a.name,
-      source: 'lastfm' as const,
-    }));
+    return mapArtistsByTag(data?.topartists?.artist ?? []);
   }
 
   async tracksByTag(tag: string, limit = 12): Promise<SimpleTrack[]> {
@@ -145,11 +107,6 @@ export class LastfmService {
       tag,
       limit: String(limit),
     });
-    return (data?.tracks?.track ?? []).map((t: any) => ({
-      id: t.mbid || `name:${t.artist?.name}|${t.name}`,
-      title: t.name,
-      artistName: t.artist?.name,
-      duration: t.duration ? Number(t.duration) * 1000 : undefined,
-    }));
+    return mapTracksByTag(data?.tracks?.track ?? []);
   }
 }

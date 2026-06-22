@@ -15,7 +15,10 @@ import {
 const PG_FK_VIOLATION = '23503';
 
 function isForeignKeyViolation(err: unknown): boolean {
-  return err instanceof QueryFailedError && (err.driverError as any)?.code === PG_FK_VIOLATION;
+  return (
+    err instanceof QueryFailedError &&
+    (err.driverError as { code?: string })?.code === PG_FK_VIOLATION
+  );
 }
 
 @Injectable()

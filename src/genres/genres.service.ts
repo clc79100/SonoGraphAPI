@@ -7,11 +7,7 @@ import { Genre } from '../entities/genre.entity';
 import { GenreRelation } from '../entities/genre-relation.entity';
 import { GenreParent } from '../entities/genre-parent.entity';
 import { GenreSourceTag } from '../entities/genre-source-tag.entity';
-import {
-  FamilyResponse,
-  GenreResponse,
-  SourceTagsResponse,
-} from './dto/genre-response.dto';
+import { FamilyResponse, GenreResponse, SourceTagsResponse } from './dto/genre-response.dto';
 
 @Injectable()
 export class GenresService {
@@ -42,8 +38,16 @@ export class GenresService {
 
     this.logger.log('Genre graph loaded', 'GenresService');
 
-    const parentsByGenre = groupBy(parents, (p) => p.genreId, (p) => p.parentId);
-    const relatedByGenre = groupBy(relations, (r) => r.genreId, (r) => r.relatedId);
+    const parentsByGenre = groupBy(
+      parents,
+      (p) => p.genreId,
+      (p) => p.parentId,
+    );
+    const relatedByGenre = groupBy(
+      relations,
+      (r) => r.genreId,
+      (r) => r.relatedId,
+    );
     const tagsByGenre = groupSourceTags(sourceTags);
 
     return genres.map((g) =>

@@ -49,11 +49,7 @@ export interface SimpleTrack {
   duration?: number; // ms
 }
 
-export type ProxyErrorCode =
-  | 'no_credentials'
-  | 'premium_required'
-  | 'request_failed'
-  | 'not_found';
+export type ProxyErrorCode = 'no_credentials' | 'premium_required' | 'request_failed' | 'not_found';
 
 export class ProxyError extends Error {
   constructor(

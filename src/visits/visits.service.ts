@@ -33,7 +33,7 @@ export class VisitsService {
     } catch (err) {
       if (
         err instanceof QueryFailedError &&
-        (err.driverError as any)?.code === PG_FK_VIOLATION
+        (err.driverError as { code?: string })?.code === PG_FK_VIOLATION
       ) {
         throw new NotFoundException(`Genre '${genreId}' not found`);
       }

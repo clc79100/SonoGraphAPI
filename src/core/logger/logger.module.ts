@@ -24,9 +24,7 @@ function buildTransports(): winston.transport[] {
       const { AzureApplicationInsightsLogger } = require('winston-azure-application-insights');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const appInsights = require('applicationinsights');
-      transports.push(
-        new AzureApplicationInsightsLogger({ client: appInsights.defaultClient }),
-      );
+      transports.push(new AzureApplicationInsightsLogger({ client: appInsights.defaultClient }));
     }
 
     return transports;
